@@ -1,0 +1,16 @@
+{
+  "name": "boatyard-assets",
+  "version": "0.0.1",
+  "description": "boatyard web assets",
+  "main": "gulpfile.js",
+  "scripts": {
+    "test": "gulp test"
+  },
+  "author": "Ad van der Veer <advanderveer@gmail.com>",
+  "license": "Proprietary",
+  "devDependencies": {
+    "event-stream": "^3.1.5",
+    "gulp": "^3.7.0",
+    "gulp-util": "^2.2.16"
+  }
+}
