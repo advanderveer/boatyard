@@ -13,7 +13,8 @@ func main() {
 
 	//create middleware stack
 	stack := http.NotFoundHandler()
-	stack = middleware.NewAssetM(stack) //static asset middleware
+	stack = middleware.NewAssetM(stack)  //static asset middleware
+	stack = middleware.NewSocketM(stack) //websocket middleware
 
 	//create routing
 	router := mux.NewRouter()
@@ -23,7 +24,7 @@ func main() {
 		router.ServeHTTP(w, r)
 	})
 
-	//add router ont top of the stack
+	//add router ont top of classic stack
 	router.NotFoundHandler = stack
 
 	//create HTTP server
@@ -36,9 +37,10 @@ func main() {
 	}
 
 	//start serving requests
-	log.Printf("Listening on '%s'...", server.Addr)
+	log.Printf("HTTP Listening on '%s'...", server.Addr)
 	err := server.ListenAndServe()
 	if err != nil {
 		log.Fatalln(err)
 	}
+
 }

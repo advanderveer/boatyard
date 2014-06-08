@@ -1,1 +1,32 @@
-<h1>Hello World</h1>
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    
+    <title>BoatYard</title>
+    
+    <script src="vendor/angular-1.3.0-beta.11/angular.min.js"></script>
+  </head>
+  <body>
+
+    <script type="text/javascript">
+      /* globals console, WebSocket */
+      var conn = new WebSocket("ws://localhost:8080/ws");
+
+      conn.onopen = function(){
+        console.log("Connection opened!");  
+      };
+
+      conn.onclose = function(){
+        console.log("Connection closed!");  
+      };
+
+      conn.onmessage = function(ev){
+        console.log("Message received:", ev.data);  
+      };
+      
+    </script>
+
+
+  </body>
+</html>
