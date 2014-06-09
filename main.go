@@ -1,17 +1,13 @@
 package main
 
 import (
-	"encoding/json"
 	"github.com/adminibar/boatyard/src/docker"
 	"github.com/adminibar/boatyard/src/server"
 	"github.com/codegangsta/cli"
-	"io"
 	"log"
-	"net"
-	"net/http"
-	"net/http/httputil"
 	"net/url"
 	"os"
+	"time"
 )
 
 const DOCKER_HOST = "http://192.168.59.103:2375"
@@ -31,14 +27,52 @@ func run(c *cli.Context) {
 			log.Fatalf("Error while parsing --host-addr='%s': %s", addr, err)
 		}
 
-		log.Printf("Adding host '%s'...", purl.Host)
-		host := docker.NewHost(purl)
+		log.Printf("Connecting to host '%s'...", purl.Host)
+		host, err := docker.NewHost(purl)
+		if err != nil {
+			log.Fatalf("Error setting up host --host-addr='%s': %s", addr, err)
+		}
+
+		//wait until healthy
+		healthy := make(chan bool)
+		go func() {
+			for {
+
+				//check health
+				status, err := host.Ping()
+				if err != nil {
+					log.Printf("Host[%s] health check failed: '%s'", host.Addr, err)
+				}
+
+				//if where only indicate healty
+				if status == "200 OK" {
+					healthy <- true
+					break
+				}
+
+				dur := time.Second * 5
+				log.Printf("Host[%s] is not online retrying in (%s)", purl.Host, dur)
+				time.Sleep(dur)
+			}
+		}()
+
+		//block until host is up
+		<-healthy
+		log.Printf("Host[%s] is healthy!", purl.Host)
+
+		//@todo proceed with connecting
+		host.Observe()
 		pool = append(pool, host)
+
 	}
 
 	//launch http/wss server
 	server := server.NewServer(c)
-	server.Start()
+	log.Printf("Starting HTTP server on '%s'...", server.Addr)
+	err := server.Start()
+	if err != nil {
+		log.Fatalf("Error while starting HTTP server '%s': '%s'", server.Addr, err)
+	}
 
 }
 
@@ -61,92 +95,4 @@ func main() {
 	}
 
 	app.Run(os.Args)
-	return
-
-	/**
-	 * Health Check
-	 */
-
-	//create transport
-	tr := &http.Transport{
-		DisableCompression: true,
-	}
-
-	//create client
-	client := &http.Client{
-		Transport: tr,
-	}
-
-	resp, err := client.Get(DOCKER_HOST + "/_ping")
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	//check health
-	log.Printf("Host status is: '%s'", resp.Status)
-
-	/**
-	 * Event Hook
-	 */
-
-	//1. create connection
-	conn, err := net.Dial("tcp", "192.168.59.103:2375")
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	//2. create client for connection
-	cconn := httputil.NewClientConn(conn, nil)
-
-	//3. create request
-	req, err := http.NewRequest("GET", "/events", nil)
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	//4. execute request
-	resp, err = cconn.Do(req)
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	type Event struct {
-		Status string
-		ID     string
-		From   string
-		Time   int64
-	}
-
-	//listen to events
-	go func(res *http.Response, conn *httputil.ClientConn) {
-		defer conn.Close()
-		defer res.Body.Close()
-		decoder := json.NewDecoder(res.Body)
-
-		for {
-			var event Event
-			err := decoder.Decode(&event)
-			if err != nil {
-
-				//close down connection when EOF is received
-				if err == io.EOF || err == io.ErrUnexpectedEOF {
-					log.Println("Received EOF from /event entpoint")
-					break
-				} else {
-					//@todo send to error channel
-					log.Fatalln(err)
-				}
-
-			} else {
-
-				//@todo send to event channel
-				log.Println(event)
-			}
-		}
-
-		//@todo atempt to reconnect
-		log.Println("/event connection closed")
-
-	}(resp, cconn)
-
 }

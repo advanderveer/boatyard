@@ -4,7 +4,6 @@ import (
 	"github.com/adminibar/boatyard/src/server/middleware"
 	"github.com/codegangsta/cli"
 	"github.com/gorilla/mux"
-	"log"
 	"net/http"
 	"net/url"
 	"time"
@@ -18,7 +17,7 @@ func NewServer(c *cli.Context) *Server {
 	return &Server{Addr: c.String("ui-server-addr")}
 }
 
-func (s *Server) Start() {
+func (s *Server) Start() error {
 
 	//create middleware stack
 	stack := http.NotFoundHandler()
@@ -46,10 +45,10 @@ func (s *Server) Start() {
 	}
 
 	//start serving requests
-	log.Printf("HTTP Listening on '%s'...", server.Addr)
 	err := server.ListenAndServe()
 	if err != nil {
-		log.Fatalln(err)
+		return err
 	}
 
+	return nil
 }
