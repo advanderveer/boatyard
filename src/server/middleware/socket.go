@@ -1,10 +1,10 @@
 package middleware
 
 import (
+	"github.com/adminibar/boatyard/src/client"
 	"github.com/gorilla/websocket"
 	"log"
 	"net/http"
-	"time"
 )
 
 /**
@@ -14,6 +14,7 @@ import (
 type SocketM struct {
 	next     http.Handler
 	upgrader websocket.Upgrader
+	Clients  chan *client.Client
 }
 
 //create the middleware
@@ -23,7 +24,11 @@ func NewSocketM(handler http.Handler) *SocketM {
 		WriteBufferSize: 1024,
 	}
 
-	return &SocketM{next: handler, upgrader: upgrader}
+	return &SocketM{
+		next:     handler,
+		upgrader: upgrader,
+		Clients:  make(chan *client.Client),
+	}
 }
 
 //interface implementation for middleware
@@ -35,19 +40,9 @@ func (s *SocketM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		//close connection as soon as the loop ends
-		defer conn.Close()
-		for i := 0; i < 10; i++ {
-			time.Sleep(time.Second)
-
-			//write message, if we error assume the client left, leave loop
-			err := conn.WriteMessage(websocket.TextMessage, []byte("hi"))
-			if err != nil {
-				log.Println(err)
-				break
-			}
-		}
-
+		//new client by socket, blocks until someone handles the client
+		//from this point on the connection is hijacked
+		s.Clients <- client.NewClient(conn)
 	} else {
 		s.next.ServeHTTP(w, r)
 	}

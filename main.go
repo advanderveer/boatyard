@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/adminibar/boatyard/src/docker"
+	"github.com/adminibar/boatyard/src/pipeline"
 	"github.com/adminibar/boatyard/src/server"
 	"github.com/codegangsta/cli"
 	"log"
@@ -10,9 +11,10 @@ import (
 	"time"
 )
 
-const DOCKER_HOST = "http://192.168.59.103:2375"
-
 func run(c *cli.Context) {
+
+	//1. Create pipelin
+	pl := pipeline.NewPipeline()
 
 	//need at least one docker host
 	if len(c.StringSlice("host-addr")) == 0 {
@@ -20,7 +22,6 @@ func run(c *cli.Context) {
 	}
 
 	//add to pool
-	var pool []*docker.Host
 	for _, addr := range c.StringSlice("host-addr") {
 		purl, err := url.Parse(addr)
 		if err != nil {
@@ -33,7 +34,7 @@ func run(c *cli.Context) {
 			log.Fatalf("Error setting up host --host-addr='%s': %s", addr, err)
 		}
 
-		//wait until healthy
+		//wait forever until healthy
 		healthy := make(chan bool)
 		go func() {
 			for {
@@ -56,18 +57,23 @@ func run(c *cli.Context) {
 			}
 		}()
 
-		//block until host is up
+		//block until host is up; add to pipeline
 		<-healthy
 		log.Printf("Host[%s] is healthy!", purl.Host)
-
-		//@todo proceed with connecting
-		host.Observe()
-		pool = append(pool, host)
+		pl.AddHost(host) //add host to pipeline
 
 	}
 
-	//launch http/wss server
+	//launch wss server
 	server := server.NewServer(c)
+	log.Printf("Started listening for WSS clients on '%s/ws'", server.Addr)
+	go func() {
+		for client := range server.Clients {
+			pl.AddClient(client) //add client to pipeline
+		}
+	}()
+
+	//launch http server
 	log.Printf("Starting HTTP server on '%s'...", server.Addr)
 	err := server.Start()
 	if err != nil {

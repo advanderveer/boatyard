@@ -17,6 +17,13 @@ type Host struct {
 	Agent *http.Client
 }
 
+type Event struct {
+	Status string
+	ID     string
+	From   string
+	Time   int64
+}
+
 // Create a new host based on a given url
 func NewHost(addr *url.URL) (*Host, error) {
 
@@ -58,11 +65,18 @@ func (h *Host) Ping() (string, error) {
 	return resp.Status, nil
 }
 
+//
+// @todo impelment Close() (stop observing)
+//
+
 // Start observing the hosts event endpoint
-func (h *Host) Observe() {
+// Generator pattern, returns a channel of api events
+func (h *Host) Observe() <-chan Event {
+
+	//@TODO Refactor this function
 
 	//1. create connection
-	conn, err := net.Dial("tcp", "192.168.59.103:2375")
+	conn, err := net.Dial("tcp", h.Addr.Host)
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -82,19 +96,14 @@ func (h *Host) Observe() {
 		log.Fatalln(err)
 	}
 
-	type Event struct {
-		Status string
-		ID     string
-		From   string
-		Time   int64
-	}
-
-	//listen to events
-	go func(res *http.Response, conn *httputil.ClientConn) {
+	//start sending event across channel
+	c := make(chan Event)
+	go func(resp *http.Response, conn *httputil.ClientConn, c chan Event) {
 		defer conn.Close()
-		defer res.Body.Close()
-		decoder := json.NewDecoder(res.Body)
+		defer resp.Body.Close()
 
+		//keep decoding the body
+		decoder := json.NewDecoder(resp.Body)
 		for {
 			var event Event
 			err := decoder.Decode(&event)
@@ -102,7 +111,7 @@ func (h *Host) Observe() {
 
 				//close down connection when EOF is received
 				if err == io.EOF || err == io.ErrUnexpectedEOF {
-					log.Println("Received EOF from /event entpoint")
+					log.Println("Host[%s] sent EOF while observing", h.Addr.Host)
 					break
 				} else {
 					//@todo send to error channel
@@ -110,15 +119,16 @@ func (h *Host) Observe() {
 				}
 
 			} else {
-
-				//@todo send to event channel
-				log.Println(event)
+				//log and send to channel, block until received
+				log.Printf("Host[%s] sent event: %s", h.Addr.Host, event.Status)
+				c <- event
 			}
 		}
 
 		//@todo atempt to reconnect
 		log.Println("/event connection closed")
 
-	}(resp, cconn)
+	}(resp, cconn, c)
 
+	return c
 }

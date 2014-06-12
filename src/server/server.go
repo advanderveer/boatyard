@@ -1,6 +1,7 @@
 package server
 
 import (
+	"github.com/adminibar/boatyard/src/client"
 	"github.com/adminibar/boatyard/src/server/middleware"
 	"github.com/codegangsta/cli"
 	"github.com/gorilla/mux"
@@ -10,7 +11,9 @@ import (
 )
 
 type Server struct {
-	Addr string
+	Addr    string
+	SocketM *middleware.SocketM
+	Clients chan *client.Client
 }
 
 func NewServer(c *cli.Context) *Server {
@@ -21,8 +24,12 @@ func (s *Server) Start() error {
 
 	//create middleware stack
 	stack := http.NotFoundHandler()
-	stack = middleware.NewAssetM(stack)  //static asset middleware
-	stack = middleware.NewSocketM(stack) //websocket middleware
+	stack = middleware.NewAssetM(stack) //static asset middleware
+
+	//websocket middleware
+	s.SocketM = middleware.NewSocketM(stack)
+	s.Clients = s.SocketM.Clients
+	stack = s.SocketM
 
 	//create routing
 	router := mux.NewRouter()
